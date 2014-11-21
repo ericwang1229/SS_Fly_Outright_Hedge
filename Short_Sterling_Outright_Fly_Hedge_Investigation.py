@@ -2,16 +2,17 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.dates import  DateFormatter, WeekdayLocator, HourLocator, \
      DayLocator, MONDAY
+import datetime
+import functools
+import pprint
          
-    
 class trades:
-    trades = []
-    position = 0
     def __init__(self):
-        pass
-    def add(self, datetime, price, lots):
+        self.trades = []
+        self.position = 0
+    def add(self, datetime, price, lots, note):
         self.position += lots
-        self.trades.append([datetime, price, lots])
+        self.trades.append([datetime, price, lots, note])
     def pnl(self):
         temp = 0
         pnl = 0
@@ -20,12 +21,18 @@ class trades:
             pnl -= trade[1] * trade[2]
         return pnl
     
-path = "L_History.xlsx"
+##path = "L_History.xlsx"
+path = "L_Daily.xlsx" # for daily data
 xls = pd.ExcelFile(path)
 data = {}
 for sheet_name in xls.sheet_names:
-    data[sheet_name] = xls.parse(sheet_name)
-    data[sheet_name].columns = ['DateTime', 'Open', 'High', 'Low', 'Close', 'Volume']
+    print sheet_name
+    data[sheet_name] = xls.parse(sheet_name,
+                                 skiprows=[0],
+                                 parse_dates=True,
+                                 date_parser=functools.partial(datetime.datetime.strptime, format = "%m/%d/%Y"))
+##    data[sheet_name].columns = ['DateTime', 'Open', 'High', 'Low', 'Close', 'Volume']
+    data[sheet_name].columns = ['DateTime', 'Close']
 outrights = xls.sheet_names[0:12]
 flies = xls.sheet_names[12:]
 
@@ -46,28 +53,45 @@ for i in range(2, 11):
            (m.iloc[rn][index] < m.iloc[rn][index+'_mean'] + 2*m.iloc[rn][index+'_std']) and\
            (trade_recorder[index].position == 0):
             trade_recorder[index].add(m.iloc[rn]['DateTime'],
-                              m.iloc[rn][index],
-                              -1)
+                                      m.iloc[rn][index],
+                                      -1,
+                                      "EnterShort")
         if m.iloc[rn-1][index] < m.iloc[rn][index+'_mean'] - 2*m.iloc[rn][index+'_std'] and\
            m.iloc[rn][index] > m.iloc[rn][index+'_mean'] - 2*m.iloc[rn][index+'_std'] and\
            trade_recorder[index].position == 0:
             trade_recorder[index].add(m.iloc[rn]['DateTime'],
-                              m.iloc[rn][index],
-                              1)
+                                      m.iloc[rn][index],
+                                      1,
+                                      "EnterLong")
         if trade_recorder[index].position > 0 and\
            m.iloc[rn][index] > m.iloc[rn][index+'_mean'] + m.iloc[rn][index+'_std']:
             trade_recorder[index].add(m.iloc[rn]['DateTime'],
-                              m.iloc[rn][index],
-                              -1)
+                                      m.iloc[rn][index],
+                                      -1,
+                                      "ExitLong")
         if trade_recorder[index].position < 0 and\
            m.iloc[rn][index] < m.iloc[rn][index+'_mean'] - m.iloc[rn][index+'_std']:
             trade_recorder[index].add(m.iloc[rn]['DateTime'],
-                              m.iloc[rn][index],
-                              1)
+                                      m.iloc[rn][index],
+                                      1,
+                                      "ExitShort")
+        if trade_recorder[index].position > 0 and\
+           m.iloc[rn][index] < m.iloc[rn][index+'_mean'] - 3*m.iloc[rn][index+'_std']:
+            trade_recorder[index].add(m.iloc[rn]['DateTime'],
+                                      m.iloc[rn][index],
+                                      -1,
+                                      "StopLong")
+        if trade_recorder[index].position < 0 and\
+           m.iloc[rn][index] > m.iloc[rn][index+'_mean'] + 3*m.iloc[rn][index+'_std']:
+            trade_recorder[index].add(m.iloc[rn]['DateTime'],
+                                      m.iloc[rn][index],
+                                      1,
+                                      "StopShort")
     if trade_recorder[index].position <> 0:
             trade_recorder[index].add(m.iloc[len(m)-1]['DateTime'],
                               m.iloc[len(m)-1][index],
-                              -trade_recorder[index].position)
+                              -trade_recorder[index].position,
+                                      "CloseOnEnd")
     print index + ", " + trade_recorder[index].pnl().__str__()
         
             
@@ -99,11 +123,15 @@ def plot(outright_index, fly_index, hedged_index):
     ax3.plot(date, hedged_prices)
     ax3.plot(date, upper_band, color='k')
     ax3.plot(date, lower_band, color='k')
-##    ax3.plot(buy_dates, buy_prices, "^", markersize = 5, color='m')
-##    ax3.plot(sell_dates, sell_prices, "v", markersize = 5, color='k')
+    ax3.plot(buy_dates, buy_prices, "^", markersize = 5, color='m')
+    ax3.plot(sell_dates, sell_prices, "v", markersize = 5, color='k')
     
     ax1.xaxis_date()
     ax1.autoscale_view()
 
 plot("Close_u5", "Close_h5h6", "hr_7")
+plt.setp(plt.gca().get_xticklabels(), rotation=45, horizontalalignment='right')
 plt.show()
+pp = pprint.PrettyPrinter(indent = 4)
+pp.pprint(trade_recorder['hr_7'].trades)
+
