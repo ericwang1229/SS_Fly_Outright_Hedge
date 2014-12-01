@@ -5,17 +5,21 @@ from matplotlib.dates import  DateFormatter, WeekdayLocator, HourLocator, \
 import datetime
 import functools
 import pprint
-from trades import trades
-
-# Global Parameter
-ButterflyName = "h5h6"
-OutrightName = "u5"
-HedgeRatio = 57
-EntryStd = 3
-StopStd = 5
-BookStd = 2
-HedgeRatioFrom = 55
-HedgeRatioTo = 59
+         
+class trades:
+    def __init__(self):
+        self.trades = []
+        self.position = 0
+    def add(self, datetime, price, lots, note):
+        self.position += lots
+        self.trades.append([datetime, price, lots, note])
+    def pnl(self):
+        temp = 0
+        pnl = 0
+        for trade in self.trades:
+            temp += trade[2]
+            pnl -= trade[1] * trade[2]
+        return pnl
     
 ##path = "L_History.xlsx"
 path = "L_Daily.xlsx" # for daily data
@@ -32,53 +36,53 @@ for sheet_name in xls.sheet_names:
 outrights = xls.sheet_names[0:12]
 flies = xls.sheet_names[12:]
 
-ButterflyData = data['BL-'+ButterflyName.upper()+' Comdty']
-OutrightData = data['L '+OutrightName.upper()+' Comdty']
+h5h6 = data['BL-H5H6 Comdty']
+u5 = data['L U5 Comdty']
 
 rolling_window = 20
 trade_recorder = {}
-m = pd.merge(OutrightData, ButterflyData, on = "DateTime", suffixes = ('_'+OutrightName, '_'+ButterflyName))
-for i in range(HedgeRatioFrom, HedgeRatioTo,1):
+m = pd.merge(u5, h5h6, on = "DateTime", suffixes = ('_u5', '_h5h6'))
+for i in range(2, 11):
     index = 'hr_'+i.__str__()
     trade_recorder[index] = trades()
-    m[index] = m['Close_'+OutrightName] + i*m['Close_'+ButterflyName]
+    m[index] = -i*m['Close_u5'] + m['Close_h5h6']
     m[index+'_mean'] = pd.rolling_mean(m[index], rolling_window)
     m[index+'_std']  = pd.rolling_var (m[index], rolling_window)
     for rn in range(1,len(m)):
-        if (m.iloc[rn-1][index] > m.iloc[rn-1][index+'_mean'] + EntryStd*m.iloc[rn-1][index+'_std']) and\
-           (m.iloc[rn][index] < m.iloc[rn-1][index+'_mean'] + EntryStd*m.iloc[rn-1][index+'_std']) and\
+        if (m.iloc[rn-1][index] > m.iloc[rn-1][index+'_mean'] + 2*m.iloc[rn-1][index+'_std']) and\
+           (m.iloc[rn][index] < m.iloc[rn-1][index+'_mean'] + 2*m.iloc[rn-1][index+'_std']) and\
            (trade_recorder[index].position == 0):
             trade_recorder[index].add(m.iloc[rn]['DateTime'],
-                                      m.iloc[rn-1][index+'_mean'] + EntryStd*m.iloc[rn-1][index+'_std'],
+                                      m.iloc[rn-1][index+'_mean'] + 2*m.iloc[rn-1][index+'_std'],
                                       -1,
                                       "EnterShort")
-        if m.iloc[rn-1][index] < m.iloc[rn-1][index+'_mean'] - EntryStd*m.iloc[rn-1][index+'_std'] and\
-           m.iloc[rn][index] > m.iloc[rn-1][index+'_mean'] - EntryStd*m.iloc[rn-1][index+'_std'] and\
+        if m.iloc[rn-1][index] < m.iloc[rn-1][index+'_mean'] - 2*m.iloc[rn-1][index+'_std'] and\
+           m.iloc[rn][index] > m.iloc[rn-1][index+'_mean'] - 2*m.iloc[rn-1][index+'_std'] and\
            trade_recorder[index].position == 0:
             trade_recorder[index].add(m.iloc[rn]['DateTime'],
-                                      m.iloc[rn-1][index+'_mean'] - EntryStd*m.iloc[rn-1][index+'_std'],
+                                      m.iloc[rn-1][index+'_mean'] - 2*m.iloc[rn-1][index+'_std'],
                                       1,
                                       "EnterLong")
         if trade_recorder[index].position > 0 and\
-           m.iloc[rn][index] > m.iloc[rn-1][index+'_mean'] + BookStd*m.iloc[rn-1][index+'_std']:
+           m.iloc[rn][index] > m.iloc[rn-1][index+'_mean'] + m.iloc[rn-1][index+'_std']:
             trade_recorder[index].add(m.iloc[rn]['DateTime'],
                                       m.iloc[rn][index],
                                       -1,
                                       "ExitLong")
         if trade_recorder[index].position < 0 and\
-           m.iloc[rn][index] < m.iloc[rn-1][index+'_mean'] - BookStd*m.iloc[rn-1][index+'_std']:
+           m.iloc[rn][index] < m.iloc[rn-1][index+'_mean'] - m.iloc[rn-1][index+'_std']:
             trade_recorder[index].add(m.iloc[rn]['DateTime'],
                                       m.iloc[rn][index],
                                       1,
                                       "ExitShort")
         if trade_recorder[index].position > 0 and\
-           m.iloc[rn][index] < m.iloc[rn-1][index+'_mean'] - StopStd*m.iloc[rn-1][index+'_std']:
+           m.iloc[rn][index] < m.iloc[rn-1][index+'_mean'] - 3*m.iloc[rn-1][index+'_std']:
             trade_recorder[index].add(m.iloc[rn]['DateTime'],
                                       m.iloc[rn][index],
                                       -1,
                                       "StopLong")
         if trade_recorder[index].position < 0 and\
-           m.iloc[rn][index] > m.iloc[rn-1][index+'_mean'] + StopStd*m.iloc[rn-1][index+'_std']:
+           m.iloc[rn][index] > m.iloc[rn-1][index+'_mean'] + 3*m.iloc[rn-1][index+'_std']:
             trade_recorder[index].add(m.iloc[rn]['DateTime'],
                                       m.iloc[rn][index],
                                       1,
@@ -96,8 +100,8 @@ def plot(outright_index, fly_index, hedged_index):
     outright_prices = m[outright_index].values.tolist()
     fly_prices = m[fly_index].values.tolist()
     hedged_prices = m[hedged_index].values.tolist()
-    upper_band = (m[hedged_index+"_mean"]+EntryStd*m[hedged_index+"_std"]).values.tolist()
-    lower_band = (m[hedged_index+"_mean"]-EntryStd*m[hedged_index+"_std"]).values.tolist()
+    upper_band = (m[hedged_index+"_mean"]+2*m[hedged_index+"_std"]).values.tolist()
+    lower_band = (m[hedged_index+"_mean"]-2*m[hedged_index+"_std"]).values.tolist()
     buy_dates = [x[0] for x in trade_recorder[hedged_index].trades if x[2]>0]
     buy_prices = [x[1] for x in trade_recorder[hedged_index].trades if x[2]>0]
     sell_dates = [x[0] for x in trade_recorder[hedged_index].trades if x[2]<0]
@@ -125,9 +129,9 @@ def plot(outright_index, fly_index, hedged_index):
     ax1.xaxis_date()
     ax1.autoscale_view()
 
-plot("Close_"+OutrightName, "Close_"+ButterflyName, "hr_"+HedgeRatio.__str__())
+plot("Close_u5", "Close_h5h6", "hr_7")
 plt.setp(plt.gca().get_xticklabels(), rotation=45, horizontalalignment='right')
 plt.show()
 pp = pprint.PrettyPrinter(indent = 4)
-pp.pprint(trade_recorder['hr_'+HedgeRatio.__str__()].trades)
+pp.pprint(trade_recorder['hr_7'].trades)
 
